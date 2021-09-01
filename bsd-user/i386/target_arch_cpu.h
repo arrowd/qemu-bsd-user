@@ -55,7 +55,7 @@ static inline void target_cpu_init(CPUX86State *env,
     env->idt.limit = 255;
 
     env->idt.base = target_mmap(0, sizeof(uint64_t) * (env->idt.limit + 1),
-        PROT_READ|PROT_WRITE, MAP_ANONYMOUS|MAP_PRIVATE, -1, 0);
+        PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
     bsd_i386_set_idt_base(env->idt.base);
     bsd_i386_set_idt(0, 0);
     bsd_i386_set_idt(1, 0);
@@ -81,7 +81,7 @@ static inline void target_cpu_init(CPUX86State *env,
 
     /* segment setup */
     env->gdt.base = target_mmap(0, sizeof(uint64_t) * TARGET_GDT_ENTRIES,
-            PROT_READ|PROT_WRITE, MAP_ANONYMOUS|MAP_PRIVATE, -1, 0);
+            PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
     env->gdt.limit = sizeof(uint64_t) * TARGET_GDT_ENTRIES - 1;
     gdt_table = g2h_untagged(env->gdt.base);
 
@@ -111,10 +111,10 @@ static inline void target_cpu_loop(CPUX86State *env)
     /* target_siginfo_t info; */
 
     for (;;) {
-	cpu_exec_start(cs);
+        cpu_exec_start(cs);
         trapnr = cpu_exec(cs);
-	cpu_exec_end(cs);
-	process_queued_cpu_work(cs);
+        cpu_exec_end(cs);
+        process_queued_cpu_work(cs);
 
         switch (trapnr) {
         case 0x80:
@@ -175,107 +175,9 @@ static inline void target_cpu_loop(CPUX86State *env)
             }
             break;
 
-#if 0
-        case EXCP0B_NOSEG:
-        case EXCP0C_STACK:
-            info.si_signo = TARGET_SIGBUS;
-            info.si_errno = 0;
-            info.si_code = TARGET_SI_KERNEL;
-            info._sifields._sigfault._addr = 0;
-            queue_signal(env, info.si_signo, &info);
-            break;
-
-        case EXCP0D_GPF:
-            /* XXX: potential problem if ABI32 */
-            if (env->eflags & VM_MASK) {
-                handle_vm86_fault(env);
-            } else {
-                info.si_signo = TARGET_SIGSEGV;
-                info.si_errno = 0;
-                info.si_code = TARGET_SI_KERNEL;
-                info._sifields._sigfault._addr = 0;
-                queue_signal(env, info.si_signo, &info);
-            }
-            break;
-
-        case EXCP0E_PAGE:
-            info.si_signo = TARGET_SIGSEGV;
-            info.si_errno = 0;
-            if (!(env->error_code & 1)) {
-                info.si_code = TARGET_SEGV_MAPERR;
-            } else {
-                info.si_code = TARGET_SEGV_ACCERR;
-            }
-            info._sifields._sigfault._addr = env->cr[2];
-            queue_signal(env, info.si_signo, &info);
-            break;
-
-        case EXCP00_DIVZ:
-            if (env->eflags & VM_MASK) {
-                handle_vm86_trap(env, trapnr);
-            } else {
-                /* division by zero */
-                info.si_signo = TARGET_SIGFPE;
-                info.si_errno = 0;
-                info.si_code = TARGET_FPE_INTDIV;
-                info._sifields._sigfault._addr = env->eip;
-                queue_signal(env, info.si_signo, &info);
-            }
-            break;
-
-        case EXCP01_DB:
-        case EXCP03_INT3:
-            if (env->eflags & VM_MASK) {
-                handle_vm86_trap(env, trapnr);
-            } else {
-                info.si_signo = TARGET_SIGTRAP;
-                info.si_errno = 0;
-                if (trapnr == EXCP01_DB) {
-                    info.si_code = TARGET_TRAP_BRKPT;
-                    info._sifields._sigfault._addr = env->eip;
-                } else {
-                    info.si_code = TARGET_SI_KERNEL;
-                    info._sifields._sigfault._addr = 0;
-                }
-                queue_signal(env, info.si_signo, &info);
-            }
-            break;
-
-        case EXCP04_INTO:
-        case EXCP05_BOUND:
-            if (env->eflags & VM_MASK) {
-                handle_vm86_trap(env, trapnr);
-            } else {
-                info.si_signo = TARGET_SIGSEGV;
-                info.si_errno = 0;
-                info.si_code = TARGET_SI_KERNEL;
-                info._sifields._sigfault._addr = 0;
-                queue_signal(env, info.si_signo, &info);
-            }
-            break;
-
-        case EXCP06_ILLOP:
-            info.si_signo = TARGET_SIGILL;
-            info.si_errno = 0;
-            info.si_code = TARGET_ILL_ILLOPN;
-            info._sifields._sigfault._addr = env->eip;
-            queue_signal(env, info.si_signo, &info);
-            break;
-#endif
         case EXCP_INTERRUPT:
             /* just indicate that signals should be handled asap */
             break;
-#if 0
-        case EXCP_DEBUG:
-            {
-
-                info.si_signo = TARGET_SIGTRAP;
-                info.si_errno = 0;
-                info.si_code = TARGET_TRAP_BRKPT;
-                queue_signal(env, info.si_signo, &info);
-            }
-            break;
-#endif
 
         case EXCP_ATOMIC:
             cpu_exec_step_atomic(cs);
@@ -293,8 +195,9 @@ static inline void target_cpu_loop(CPUX86State *env)
 
 static inline void target_cpu_clone_regs(CPUX86State *env, target_ulong newsp)
 {
-    if (newsp)
+    if (newsp) {
         env->regs[R_ESP] = newsp;
+    }
     env->regs[R_EAX] = 0;
 }
 

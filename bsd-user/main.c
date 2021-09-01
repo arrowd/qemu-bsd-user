@@ -49,26 +49,46 @@
 #include "target_arch_cpu.h"
 
 int singlestep;
+uintptr_t guest_base;
 static const char *cpu_model;
 static const char *cpu_type;
-unsigned long guest_base;
 bool have_guest_base;
-#if (TARGET_LONG_BITS == 32) && (HOST_LONG_BITS == 64)
 /*
  * When running 32-on-64 we should make sure we can fit all of the possible
  * guest address space into a contiguous chunk of virtual host memory.
  *
  * This way we will never overlap with our own libraries or binaries or stack
  * or anything else that QEMU maps.
+ *
+ * Many cpus reserve the high bit (or more than one for some 64-bit cpus)
+ * of the address for the kernel.  Some cpus rely on this and user space
+ * uses the high bit(s) for pointer tagging and the like.  For them, we
+ * must preserve the expected address space.
  */
-# ifdef TARGET_MIPS
-/* MIPS only supports 31 bits of virtual address space for user space */
-unsigned long reserved_va = 0x77000000;
-# elif defined(TARGET_PPC64)
-unsigned long reserved_va = 0xfffff000;
+#ifndef MAX_RESERVED_VA
+# if HOST_LONG_BITS > TARGET_VIRT_ADDR_SPACE_BITS
+#  if TARGET_VIRT_ADDR_SPACE_BITS == 32 && \
+      (TARGET_LONG_BITS == 32 || defined(TARGET_ABI32))
+/*
+ * There are a number of places where we assign reserved_va to a variable
+ * of type abi_ulong and expect it to fit.  Avoid the last page.
+ */
+#   define MAX_RESERVED_VA  (0xfffffffful & TARGET_PAGE_MASK)
+#  else
+#   define MAX_RESERVED_VA  (1ul << TARGET_VIRT_ADDR_SPACE_BITS)
+#  endif
 # else
-unsigned long reserved_va = 0xf7000000;
+#  define MAX_RESERVED_VA  0
 # endif
+#endif
+
+/*
+ * That said, reserving *too* much vm space via mmap can run into problems
+ * with rlimits, oom due to page table creation, etc.  We will still try it,
+ * if directed by the command-line option, but not by default.
+ */
+#if HOST_LONG_BITS == 64 && TARGET_VIRT_ADDR_SPACE_BITS <= 32
+unsigned long reserved_va = MAX_RESERVED_VA;
 #else
 unsigned long reserved_va;
 #endif
@@ -99,8 +119,8 @@ void fork_end(int child)
     if (child) {
         CPUState *cpu, *next_cpu;
         /*
-         * Child processes created by fork() only have a single thread.
-         * Discard information about the parent threads.
+         * Child processes created by fork() only have a single thread.  Discard
+         * information about the parent threads.
          */
         CPU_FOREACH_SAFE(cpu, next_cpu) {
             if (cpu != thread_cpu) {
@@ -108,14 +128,15 @@ void fork_end(int child)
             }
         }
         mmap_fork_end(child);
-        /* qemu_init_cpu_list() takes care of reinitializing the
-         * exclusive state, so we don't need to end_exclusive() here.
+        /*
+         * qemu_init_cpu_list() takes care of reinitializing the exclusive
+         * state, so we don't need to end_exclusive() here.
          */
-	qemu_init_cpu_list();
+        qemu_init_cpu_list();
         gdbserver_fork(thread_cpu);
     } else {
         mmap_fork_end(child);
-	cpu_list_unlock();
+        cpu_list_unlock();
         end_exclusive();
     }
 }
@@ -249,8 +270,9 @@ adjust_ssize(void)
 {
     struct rlimit rl;
 
-    if (getrlimit(RLIMIT_STACK, &rl) != 0)
+    if (getrlimit(RLIMIT_STACK, &rl) != 0) {
         return;
+    }
 
     target_maxssiz = MIN(target_maxssiz, rl.rlim_max);
     target_dflssiz = MIN(MAX(target_dflssiz, rl.rlim_cur), target_maxssiz);
@@ -293,7 +315,7 @@ int main(int argc, char **argv)
     char **target_environ, **wrk;
     envlist_t *envlist = NULL;
     bsd_type = HOST_DEFAULT_BSD_TYPE;
-    char * argv0 = NULL;
+    char *argv0 = NULL;
 
     adjust_ssize();
 
@@ -442,8 +464,9 @@ int main(int argc, char **argv)
         usage();
     }
     filename = argv[optind];
-    if (argv0)
+    if (argv0) {
         argv[optind] = argv0;
+    }
 
     if (!trace_init_backends()) {
         exit(1);
@@ -498,7 +521,8 @@ int main(int argc, char **argv)
      */
     guest_base = HOST_PAGE_ALIGN(guest_base);
 
-    if (loader_exec(filename, argv+optind, target_environ, regs, info, &bprm)) {
+    if (loader_exec(filename, argv + optind, target_environ, regs, info,
+                    &bprm) != 0) {
         printf("Error loading %s\n", filename);
         _exit(1);
     }

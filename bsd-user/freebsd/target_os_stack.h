@@ -22,6 +22,7 @@
 
 #include <sys/param.h>
 #include "target_arch_sigtramp.h"
+#include "qemu/guest-random.h"
 
 /*
  * The inital FreeBSD stack is as follows:
@@ -58,7 +59,6 @@ static inline int setup_initial_stack(struct bsd_binprm *bprm,
     /* Save some space for ps_strings. */
     p -= sizeof(struct target_ps_strings);
 
-#ifdef TARGET_SZSIGCODE
     /* Add machine depedent sigcode. */
     p -= TARGET_SZSIGCODE;
     if (setup_sigtramp(p, (unsigned)offsetof(struct target_sigframe, sf_uc),
@@ -66,7 +66,6 @@ static inline int setup_initial_stack(struct bsd_binprm *bprm,
         errno = EFAULT;
         return -1;
     }
-#endif
     if (bprm->fullpath) {
         execpath_len = strlen(bprm->fullpath) + 1;
         p -= roundup(execpath_len, sizeof(abi_ulong));
@@ -76,7 +75,7 @@ static inline int setup_initial_stack(struct bsd_binprm *bprm,
         }
     }
     /* Add canary for SSP. */
-    arc4random_buf(canary, sizeof(canary));
+    qemu_guest_getrandom_nofail(canary, sizeof(canary));
     p -= roundup(sizeof(canary), sizeof(abi_ulong));
     if (memcpy_to_target(p, canary, sizeof(canary))) {
         errno = EFAULT;
@@ -106,15 +105,16 @@ static inline int setup_initial_stack(struct bsd_binprm *bprm,
         stringspace += strlen(bprm->envp[i]) + 1;
     }
     if (stringspace > TARGET_ARG_MAX) {
-       errno = ENOMEM;
-       return -1;
+        errno = ENOMEM;
+        return -1;
     }
     /* Make room for the argv and envp strings */
     destp = rounddown(p - stringspace, sizeof(abi_ulong));
     p = argvp = destp - (bprm->argc + bprm->envc + 2) * sizeof(abi_ulong);
     /* Remember the strings pointer */
-    if (stringp)
+    if (stringp) {
         *stringp = destp;
+    }
     /*
      * Add argv strings.  Note that the argv[] vectors are added by
      * loader_build_argptr()
@@ -172,7 +172,7 @@ static inline int setup_initial_stack(struct bsd_binprm *bprm,
     }
 
     if (ret_addr) {
-       *ret_addr = p;
+        *ret_addr = p;
     }
 
     return 0;
