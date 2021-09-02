@@ -26,3 +26,4 @@ doit mips64 mips64
 doit powerpc ppc
 doit powerpc64 ppc64
 doit riscv64 riscv64
+doit e2k e2k
