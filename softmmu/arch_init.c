@@ -38,4 +38,6 @@ int graphic_height = 600;
 int graphic_depth = 32;
 #endif
 
+#elif defined(TARGET_E2K)
+#define QEMU_ARCH QEMU_ARCH_E2K
 const uint32_t arch_type = QEMU_ARCH;
